@@ -1,0 +1,100 @@
+# ==============================================================================
+# Production Docker Compose for Distributed Job Scheduler
+# Architecture: PostgreSQL 16 + Express API Server + Distributed Worker Nodes
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Database Service with Row-Level Locking & Indexes
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: djs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-scheduler_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-scheduler_password_secure}
+      POSTGRES_DB: ${DB_NAME:-distributed_scheduler}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-scheduler_user} -d ${DB_NAME:-distributed_scheduler}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scheduler_network
+
+  # ----------------------------------------------------------------------------
+  # Central Express Backend API & Frontend Dashboard Server
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: djs-api-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-scheduler_user}:${DB_PASSWORD:-scheduler_password_secure}@postgres:5432/${DB_NAME:-distributed_scheduler}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-djs-jwt-production-secret-replace-me}
+      WORKER_POLL_INTERVAL_MS: 1500
+      WORKER_HEARTBEAT_INTERVAL_MS: 3000
+      WORKER_STALE_THRESHOLD_MS: 10000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - scheduler_network
+
+  # ----------------------------------------------------------------------------
+  # Scalable Worker Node Instances (Multi-Worker Execution Cluster)
+  # ----------------------------------------------------------------------------
+  worker-alpha:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: djs-worker-alpha
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-scheduler_user}:${DB_PASSWORD:-scheduler_password_secure}@postgres:5432/${DB_NAME:-distributed_scheduler}?schema=public
+      WORKER_NODE_NAME: worker-alpha
+      WORKER_CONCURRENCY: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - scheduler_network
+
+  worker-beta:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: djs-worker-beta
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-scheduler_user}:${DB_PASSWORD:-scheduler_password_secure}@postgres:5432/${DB_NAME:-distributed_scheduler}?schema=public
+      WORKER_NODE_NAME: worker-beta
+      WORKER_CONCURRENCY: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - scheduler_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  scheduler_network:
+    driver: bridge

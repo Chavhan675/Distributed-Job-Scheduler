@@ -1,0 +1,6 @@
+{
+  "name": "Distributed Job Scheduler",
+  "description": "A production-grade distributed background-job scheduling platform featuring atomic job claiming, concurrency controls, multi-worker coordination, configurable retry backoffs, dead letter queues, and live observability dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
